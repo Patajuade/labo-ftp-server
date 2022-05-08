@@ -1,0 +1,308 @@
+debian 10
+t2 micro
+creer une nouvelle paire de clés (pas oublier de telecharger !!)
+
+dans puttygen mettre le .pem
+puis create private key
+puis dans putty -> auth -> mettre .ppk 
+
+
+sudo su -
+apt-get update
+apt-get upgrade
+
+on a déjà un admin associé à notre certificat
+il faut pouvoir creer un nouveau user :
+wilfartuser 
+capable de se co sur l'environement debian via le certificat envoyé par mail
+______________________________________________________________________________
+Ajouter un user :
+
+	adduser wilfartuser
+______________________________________________________________________________
+Enlever le mdp de wilfartuser :
+
+	passwd -d wilfartuser
+______________________________________________________________________________
+Switch d'user
+
+	su - wilfartuser
+______________________________________________________________________________
+	nano /etc/ssh/sshd_config
+______________________________________________________________________________
+
+	cd /home/admin
+	ls -al
+
+changer les droits sur un dossier
+chmod		//permet de changer les droits
+chown		//permet de changer le propriétaire
+
+
+
+	cd /home/admin/.ssh
+	nano authorized_keys	//pas toucher !!
+
+___________________
+
+dans wilfartuser creer .ssh + mettre le fichier authorized keys
+
+	cd /home/wilfartuser
+	cd wilfartuser/
+	ls -al
+	mkdir .ssh
+	ls -al
+	
+	cd /home/wilfartuser/.ssh
+	touch authorized_keys
+	nano authorized_keys	//mettre ici le .ppk
+
+modifier les authorisations/acces où il y a écrit root (user/group)
+	ls -al
+	chmod 700 .ssh
+	chown wilfartuser:wilfartuser .ssh
+
+	cd .ssh
+	ls -al
+	chmod 600 authorized_keys
+	chown wilfartuser:wilfartuser authorized_keys
+
+	shutdown -h now
+______________________________________________________________________________
+
+labo 2
+
+Serveur sftp
+contrôler les firewalls
+filezilla
+
+package vsftpd
+configurer le serveur et firewall pour fonctionner en mode anonyme
+règles de sécurité laissant passer le trafic sur les bons ports
+mode actif passif -> choisir celui qui rend la vie plus simple
+actif -> pas de soucis
+passif -> le firewall n'est pas prévu pour laisser entrer le trafic. ouvrir une plage de port autorisés
+creer son propre certificat autosigné
+config permettant de savoir où la config anonyme va tomber au niveau des datas
+pouvoir se connecter sur le dossier associé à la partie anonyme
+////////////////////////////////////////////////////////////////
+réparer les conneries : cd /etc/
+			cp vtfspd.conf.org vtfstp.conf
+////////////////////////////////////////////////////////////////
+
+les droits peuvent s'enlever via umask (777-022 = 755 s'il s'agit d'un dossier, et 666-022 = 644 s'il s'agit d'un fichier 644 = rw-r-r)
+
+modifier des règles entrantes dans le firewall aws
+
+	apt-cache search vsftpd
+	apt-get install vsftpd
+	cd /etc/
+	ls vs*
+
+	cp vsftpd.conf vsftpd.conf.org 		//Faire une copie pour pas pleurer
+	cp /etc/vsftpd.conf /etc/vsftpd.conf.orig
+	nano /etc/vsftpd.conf
+	ctrl x
+
+______________________________________________________________________________
+//ajouter un user FTP
+	adduser la209563
+	adduser ftpwilfart
+	adduser pasledroit
+
+______________________________________________________________________________
+//creer les dossiers des users
+	cd /var/
+	mkdir -p /var/data/$USER/ftp-data/
+	mkdir -p /var/data/la209563/ftp-data/
+	mkdir -p /var/data/wilfartuser/ftp-data/
+	mkdir -p /var/data/ftpwilfart/ftp-data/
+	mkdir -p /var/data/pasledroit/ftp-data/
+	cd /var/data/$USER/ftp-data
+
+______________________________________________________________________________
+//ajouter l'user aux users ftp autorisés
+	echo "wilfartuser" | sudo tee -a /etc/vsftpd.userlist
+	echo "la209563" | sudo tee -a /etc/vsftpd.userlist
+	echo "ftpwilfart" | sudo tee -a /etc/vsftpd.userlist
+	echo "anonymous" | sudo tee -a /etc/vsftpd.userlist
+
+on ajoute pas l'user pasledroit dans la liste des users autorisés à se connecter !
+
+echo : afficher qqch
+| : merge des deux commandes
+tee -a : ajouter qqch à la fin du fichier
+Donc on ajoute l'echo à la fin du fichier
+même chose que nano /etc/vsftpd.userlist
+echo pouet >> /etc/vsftpd.userlist 
+
+______________________________________________________________________________
+//restart le serveur
+	systemctl restart vsftpd && systemctl enable vsftpd && systemctl status vsftpd
+
+______________________________________________________________________________
+Chercher l'adresse ip sur aws
+utiliser cette adresse dans filezilla
+dans filezilla gestionnaire des sites > hôte > ip > authentification anonyme > paramètres de transfert > actif
+
+______________________________________________________________________________
+autoriser certains users à se connecter au serveur ftp :
+	nano /etc/vsftpd.conf
+	userlist_enable=YES
+	userlist_file= /etc/vsftpd.userlist 
+	userlist_deny=NO
+
+______________________________________________________________________________
+ports pour le mode passif :
+	nano /etc/vsftpd.conf
+	pasv_min_port=40000
+	pasv_max_port=50000
+
+	user_sub_token=$USER
+	local_root=/var/data/$USER/ftp-data
+
+	mkdir public
+permissions :
+Modification de l'accès au dossier public pour qu'il ne soit accessible qu'ne lecture par les users anonymes
+	chmod -R o-x /var/data/public	
+
+______________________________________________________________________________
+Redirection des utilisateurs anonymes :
+	nano /etc/vsftpd.conf
+	anon_root=/var/data/public		//permet de rediriger les anonymes dans ce dossier là
+	systemctl restart vsftpd && systemctl enable vsftpd && systemctl status vsftpd
+	chmod -R 777 /var/data/public		//tous les accès à tout le monde
+	chmod -R a-w /var/data/public		//Retrait des accès en écriture à tout le monde
+	
+______________________________________________________________________________
+Changer le propriétaire du dossier ftp-data dans les users
+	cd /var/data/la209563
+	chown -R la209563 ftp-data
+
+	cd /var/data/wilfartuser
+	chown -R wilfartuser ftp-data
+
+	cd /var/data/ftpwilfart
+	chown -R ftpwilfart ftp-data
+
+	cd /var/data/pasledroit
+	chown -R pasledroit ftp-data
+______________________________________________________________________________
+Cloisoner les users dans /var/data/$USER/ftp-data
+	nano /etc/vsftpd.conf
+	local_root=/var/data/$USER/ftp-data
+______________________________________________________________________________
+droits d'accès des users
+permissions des users dans leur propre dossier
+	cd /var/data
+	chmod -R 700 la209563
+	chmod -R 700 ftpwilfart
+	chmod -R 700 wilfartuser
+
+	sudo chmod -R 700 wilfartuser
+	sudo chmod -R 700 wilfartuser/ftp-data
+	sudo chown -R wilfartuser: wilfartuser/ftp-data
+	sudo chown -R wilfartuser: wilfartuser
+
+	sudo chmod -R 700 la209563
+	sudo chmod -R 700 la209563/ftp-data
+	sudo chown -R la209563: la209563/ftp-data
+	sudo chown -R la209563: la209563
+
+	sudo chmod -R 700 ftpwilfart
+	sudo chmod -R 700 ftpwilfart/ftp-data
+	sudo chown -R ftpwilfart: ftpwilfart/ftp-data
+	sudo chown -R ftpwilfart: ftpwilfart
+
+	sudo chmod -R 700 pasledroit
+	sudo chmod -R 700 pasledroit/ftp-data
+	sudo chown -R  pasledroit: pasledroit/ftp-data
+	sudo chown -R  pasledroit: pasledroit
+______________________________________________________________________________
+Générer un certificat
+Le principal défaut du protocole FTP est que le couple nom d'utilisateur / mot de passe transite en clair sur le réseau.
+SSL permet de chiffrer les échanges d'authentification et/ou de données.
+
+
+	mkdir /etc/ssl/localcerts
+	openssl req -new -x509 -days 365 -nodes -out /etc/ssl/localcerts/vsftpd.pem -keyout /etc/ssl/localcerts/vsftpd.key 
+
+	nano /etc/vsftpd.conf
+	rsa_cert_file=/etc/ssl/localcerts/vsftpd.pem
+	rsa_private_key_file=/etc/ssl/localcerts/vsftpd.key
+	ssl_enable=YES
+
+	allow_writeable_chroot=YES
+	write_enable=YES
+
+______________________________________________________________________________
+liste d'users pas jail qui peuvent se connecter
+décommenter chroot_list_enable et chroot_list_file
+cd /etc
+touch vsftpd.chroot_list
+/etc/vsftpd.chroot_list
+
+liste d'users qui peuvent se connecter
+	nano vsftpd.conf
+
+wireshark
+tcp port 21
+lance run transfert sur filezilla
+
+creer des users 
+////////////////////////////////////
+
+Config vsftpd.conf :
+	local_enable=YES		# autorise les users locaux à accéder au serveur FTP
+	anonymous_enable=YES		#autorise les connexions anonymes
+	anon_root=/var/data/public	#home directory des users anonymes
+
+	chroot_local_user=YES		#empêche les users locaux d'accéder à autre chose qu'à leur home directory
+	chroot_list_enable=YES
+
+	local_root=/var/data/$USER/ftp-data			#On définit le home directory des users
+	user_sub_token=$USER
+	rsa_cert_file=/etc/ssl/localcerts/vsftpd.pem		#certificat, le serveur FTP utilisera seulement TLS pour les connections
+	rsa_private_key_file=/etc/ssl/localcerts/vsftpd.key	#certificat
+	ssl_enable=YES						#certificat
+
+	userlist_enable=YES			#limite le type d'users pouvant se connecter au serveur FTP
+	userlist_file= /etc/vsftpd.userlist 	#limite le type d'users pouvant se connecter au serveur FTP
+	userlist_deny=NO			##limite le type d'users pouvant se connecter au serveur FTP
+	pasv_min_port=40000			#Ports mode passif
+	pasv_max_port=50000			#ports mode passif
+	pasv_enable=Yes				#autorise le mode passif
+	
+	allow_writeable_chroot=YES		#autorise l'accès en écriture d'un user dans son home directory
+	write_enable=YES			#autorise les changements dans le système de fichier (upload, delete,..)
+	#anon_upload_enable=NO                  # dépôt de fichiers interdit
+	#anon_mkdir_write_enable=NO  		# création de dossiers interdite
+
+
+
+/////////////////////////////////////
+
+	iptables -t filter -A OUTPUT -p TCP --sport 22 -j ACCEPT
+	iptables -t filter -A OUTPUT -p TCP --dport 80 -j ACCEPT
+	iptables -t filter -A OUTPUT -p TCP --dport 53 -j ACCEPT
+	iptables -t filter -A OUTPUT -p UDP --dport 53 -j ACCEPT
+	iptables -t filter -A OUTPUT -p TCP --sport 53 -j ACCEPT
+	iptables -t filter -A OUTPUT -p UDP --sport 53 -j ACCEPT
+	iptables -t filter -A OUTPUT -p TCP --dport 443 -j ACCEPT
+	iptables -t filter -A OUTPUT -p ICMP --icmp-type 0 -j DROP 
+	iptables -t filter -A OUTPUT -p ICMP -j ACCEPT			
+	iptables -t filter -A OUTPUT -j DROP
+
+	iptables -t filter -A INPUT -p TCP --sport 80 -j ACCEPT
+	iptables -t filter -A INPUT -p TCP --sport 443 -j ACCEPT
+	iptables -t filter -A INPUT -p TCP --sport 53 -j ACCEPT
+	iptables -t filter -A INPUT -p UDP --sport 53 -j ACCEPT
+	iptables -t filter -A INPUT -p TCP --dport 22 -j ACCEPT
+	iptables -t filter -A INPUT -p TCP --dport 53 -j ACCEPT
+	iptables -t filter -A INPUT -p ICMP -j ACCEPT
+	iptables -t filter -A INPUT -j DROP
+
+iptables -t filter -A INPUT -p TCP --dport 21 -j ACCEPT
+iptables -I INPUT -p tcp --destination-port 40000:50000 -j ACCEPT
+service iptables save
+
